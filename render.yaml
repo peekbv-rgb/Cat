@@ -14,10 +14,11 @@ services:
         value: 761a6d44-1be3-42d5-9bda-f5ef72a72e43
       - key: RUNWAY_MAX_DURATION
         value: "1800"
-      - key: AUTH_USER
-        value: Ruud
       # sync:false keeps these out of the repo - set them in the Render
-      # dashboard, where they are stored encrypted.
+      # dashboard, where they are stored encrypted. The username is included
+      # because publishing half a credential pair weakens the gate for nothing.
+      - key: AUTH_USER
+        sync: false
       - key: RUNWAYML_API_SECRET
         sync: false
       - key: AUTH_PASSWORD
