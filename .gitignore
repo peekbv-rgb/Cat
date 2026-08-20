@@ -1,0 +1,13 @@
+# Secrets - never commit
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# Local build output and unrelated media
+runway-character-session.zip
+*.mp4
+*.jpeg
+*.jpg
+*.png

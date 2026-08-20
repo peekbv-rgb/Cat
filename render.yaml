@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: runway-character-session
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    envVars:
+      # Render injects PORT itself; the server already reads it.
+      # It routes to the container's external interface, so loopback won't do.
+      - key: HOST
+        value: 0.0.0.0
+      - key: RUNWAY_CHARACTER_ID
+        value: 761a6d44-1be3-42d5-9bda-f5ef72a72e43
+      - key: RUNWAY_MAX_DURATION
+        value: "1800"
+      - key: AUTH_USER
+        value: Ruud
+      # sync:false keeps these out of the repo - set them in the Render
+      # dashboard, where they are stored encrypted.
+      - key: RUNWAYML_API_SECRET
+        sync: false
+      - key: AUTH_PASSWORD
+        sync: false

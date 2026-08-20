@@ -1,0 +1,758 @@
+<!doctype html>
+<meta charset="utf-8" />
+<link rel="icon" href="data:," />
+<title>Runway Character - Live Session</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: #0e0e11; color: #e8e8ea; }
+  main { max-width: 720px; margin: 0 auto; padding: 32px 20px; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+  .id { font-family: ui-monospace, monospace; font-size: 12px; color: #8b8b94; margin-bottom: 24px; }
+  .stage { position: relative; aspect-ratio: 16/9; background: #17171c;
+           border: 1px solid #2a2a32; border-radius: 10px; overflow: hidden; }
+  video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: #6c6c76; }
+  .row { display: flex; gap: 10px; align-items: center; margin-top: 16px; }
+  button { font: inherit; padding: 9px 18px; border-radius: 7px; border: 1px solid #35353f;
+           background: #23232b; color: #e8e8ea; cursor: pointer; }
+  button:hover:not(:disabled) { background: #2c2c36; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: #4f46e5; border-color: #4f46e5; }
+  button.primary:hover:not(:disabled) { background: #5b53ea; }
+  #status { color: #8b8b94; font-size: 13px; }
+  .lbl { font-size: 12px; color: #8b8b94; }
+  .chk { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+  .chk input { accent-color: #4f46e5; width: 15px; height: 15px; }
+  #insecureWarning { margin: 0 0 16px; padding: 10px 12px; border-radius: 8px;
+                     background: #2c2213; border: 1px solid #5a4a22;
+                     color: #f0c674; font-size: 13px; }
+  #insecureWarning code { font-family: ui-monospace, monospace; }
+  [hidden] { display: none !important; }
+  select { font: inherit; font-size: 13px; padding: 7px 9px; border-radius: 7px;
+           border: 1px solid #35353f; background: #1c1c23; color: #e8e8ea; max-width: 320px; }
+  .diag { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+  .pill { font-family: ui-monospace, monospace; font-size: 11px; padding: 3px 8px;
+          border-radius: 5px; background: #1c1c23; border: 1px solid #2a2a32; color: #9a9aa4; }
+  .pill.ok   { color: #7ee0a3; border-color: #26523a; }
+  .pill.warn { color: #f0c674; border-color: #5a4a22; }
+  .pill.bad  { color: #f08f8f; border-color: #5a2626; }
+  .meter { flex: 1; min-width: 90px; height: 5px; background: #1c1c23;
+           border-radius: 3px; overflow: hidden; }
+  .meter i { display: block; height: 100%; width: 0%; background: #7ee0a3; transition: width .08s; }
+  #dMyLevel { background: #7aa2f7; }
+  button[hidden] { display: none; }
+  .sub { font-size: 12px; font-weight: 600; text-transform: uppercase;
+         letter-spacing: .06em; color: #6c6c76; margin: 22px 0 8px; }
+  #transcript { padding: 12px; background: #14141a; border: 1px solid #23232b;
+                border-radius: 8px; max-height: 240px; overflow-y: auto; }
+  #transcript .empty { color: #5a5a64; font-style: italic; }
+  .turn { margin-bottom: 10px; }
+  .turn:last-child { margin-bottom: 0; }
+  .who { font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
+         display: block; margin-bottom: 2px; }
+  .turn.user .who { color: #7aa2f7; }
+  .turn.assistant .who { color: #7ee0a3; }
+  .turn .said { color: #d8d8dc; }
+  #log { padding: 12px; background: #14141a; border: 1px solid #23232b;
+         border-radius: 8px; font-family: ui-monospace, monospace; font-size: 11px;
+         white-space: pre-wrap; color: #8b8b94; max-height: 150px; overflow-y: auto; }
+</style>
+
+<main>
+  <h1>Runway Character - Live Session</h1>
+  <div class="id" id="charId">loading character...</div>
+  <div id="insecureWarning" hidden>
+    This page is not a secure context, so the browser will refuse microphone
+    access. Serve it over HTTPS (or use <code>localhost</code>) to talk to the
+    character. Playback and transcripts still work.
+  </div>
+
+  <div class="stage">
+    <video id="video" autoplay playsinline></video>
+    <div class="placeholder" id="placeholder">not connected</div>
+  </div>
+  <audio id="audio" autoplay></audio>
+
+  <div class="row">
+    <button class="primary" id="start">Start call</button>
+    <button id="end" disabled>End call</button>
+    <button id="enableAudio" hidden>Enable audio</button>
+    <button id="inject" hidden>Inject test speech</button>
+    <span id="status">idle</span>
+  </div>
+
+  <div class="diag">
+    <span id="dMic" class="pill">mic: -</span>
+    <span id="dAudio" class="pill">playback: -</span>
+    <span id="dChar" class="pill">character: -</span>
+    <span id="dTime" class="pill">time left: -</span>
+    <span class="meter" title="character audio"><i id="dLevel"></i></span>
+  </div>
+
+  <div class="row">
+    <label for="micSelect" class="lbl">Microphone</label>
+    <select id="micSelect"><option value="">Default device</option></select>
+    <button id="refreshMics">Refresh</button>
+    <button id="testMic">Test mic</button>
+  </div>
+
+  <div class="row">
+    <label class="lbl chk">
+      <input type="checkbox" id="letHerFinish" checked />
+      Let her finish before listening again
+    </label>
+  </div>
+
+  <div class="diag">
+    <span id="dYou" class="pill">your voice: -</span>
+    <span class="meter" title="your microphone"><i id="dMyLevel"></i></span>
+  </div>
+
+  <h2 class="sub">Transcript</h2>
+  <div id="transcript"><span class="empty">Nothing said yet.</span></div>
+
+  <h2 class="sub">Session log</h2>
+  <div id="log"></div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const startBtn = $('start'), endBtn = $('end');
+  let room = null, sessionId = null;
+
+  const log = (msg) => {
+    $('log').textContent += `${new Date().toLocaleTimeString()}  ${msg}\n`;
+    $('log').scrollTop = $('log').scrollHeight;
+  };
+  const status = (text) => { $('status').textContent = text; };
+
+  // Show which Character we're bound to, and surface a bad key/ID before dialling.
+  fetch('/api/character')
+    .then((r) => r.json())
+    .then((c) => {
+      $('charId').textContent = c.error ? `character check failed: ${c.error}` : `${c.name ?? 'Character'} - ${c.id}`;
+      if (c.error) log(c.error);
+    })
+    .catch((e) => log(String(e)));
+
+  // Labels are only exposed once permission has been granted, so this may need
+  // a Refresh after the first successful call.
+  // Remember the choice by LABEL as well as id: browsers rotate deviceIds when
+  // permission state changes, and an id-only match silently falls back to the
+  // default device - which is how a working call turns into a silent one.
+  const MIC_KEY = 'runway.micLabel';
+  const MIC_IDX = 'runway.micIndex';
+
+  // Undefined entirely in an insecure context (e.g. a phone on http://LAN-IP),
+  // not merely permission-denied - so every use must be guarded.
+  const media = () => navigator.mediaDevices || null;
+
+  async function listMics() {
+    const sel = $('micSelect');
+    if (!media()) {
+      sel.innerHTML = '<option value="">Unavailable (needs HTTPS)</option>';
+      return;
+    }
+    const wantedId = sel.value;
+    const wantedLabel = sel.selectedOptions[0]?.textContent
+      || localStorage.getItem(MIC_KEY)
+      || '';
+
+    try {
+      const devices = await media().enumerateDevices();
+      const mics = devices.filter((d) => d.kind === 'audioinput');
+      sel.innerHTML = '<option value="">Default device</option>';
+      mics.forEach((d, i) => {
+        const opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.textContent = d.label || `Microphone ${i + 1}`;
+        sel.appendChild(opt);
+      });
+
+      // Restore by id, then by label. Verify it actually took.
+      let restored = false;
+      if (wantedId && [...sel.options].some((o) => o.value === wantedId)) {
+        sel.value = wantedId;
+        restored = sel.value === wantedId;
+      }
+      if (!restored && wantedLabel && wantedLabel !== 'Default device') {
+        const match = [...sel.options].find((o) => o.textContent === wantedLabel);
+        if (match) {
+          sel.value = match.value;
+          restored = true;
+          log(`re-matched microphone by name: ${wantedLabel}`);
+        }
+      }
+      // Last resort: same position in the list. Needed because labels are
+      // placeholders ("Microphone 1") until permission is granted and become
+      // real names afterwards, so neither id nor label survives that switch.
+      if (!restored) {
+        const idx = parseInt(localStorage.getItem(MIC_IDX) ?? '', 10);
+        if (Number.isInteger(idx) && idx > 0 && idx < sel.options.length) {
+          sel.selectedIndex = idx;
+          restored = true;
+          log(`restored microphone by position: ${sel.selectedOptions[0].textContent}`);
+        }
+      }
+      if (!restored && (wantedId || (wantedLabel && wantedLabel !== 'Default device'))) {
+        log('warning: previously selected microphone is gone - using default');
+      }
+
+      log(`found ${mics.length} microphone(s)`);
+    } catch (err) {
+      log(`could not list microphones: ${err.message}`);
+    }
+  }
+
+  // Persist every explicit choice so it survives reloads and restarts.
+  function rememberMic() {
+    const sel = $('micSelect');
+    const label = sel.selectedOptions[0]?.textContent || '';
+    if (label && label !== 'Default device') {
+      localStorage.setItem(MIC_KEY, label);
+      localStorage.setItem(MIC_IDX, String(sel.selectedIndex));
+    } else {
+      localStorage.removeItem(MIC_KEY);
+      localStorage.removeItem(MIC_IDX);
+    }
+  }
+
+  // getUserMedia requires a secure context. On a phone reaching this over a LAN
+  // IP the mic fails with a bare "Permission denied", so say why up front.
+  if (!window.isSecureContext) {
+    $('insecureWarning').hidden = false;
+    pill('dMic', 'mic: needs HTTPS', 'bad');
+    log(`insecure context (${location.origin}) - microphone will be refused`);
+  }
+
+  $('refreshMics').onclick = listMics;
+
+  // Check the microphone WITHOUT opening a billed session. Also grants the
+  // permission that makes real device names appear in the picker.
+  let testStream = null;
+  $('testMic').onclick = async () => {
+    const btn = $('testMic');
+
+    if (testStream) {
+      testStream.getTracks().forEach((t) => t.stop());
+      testStream = null;
+      stopMyMeter();
+      btn.textContent = 'Test mic';
+      pill('dYou', 'your voice: -');
+      log('mic test stopped');
+      return;
+    }
+
+    if (!media()) {
+      log('mic test unavailable: this page is not a secure context');
+      return;
+    }
+
+    const deviceId = $('micSelect').value;
+    try {
+      testStream = await media().getUserMedia({
+        audio: deviceId ? { deviceId: { exact: deviceId } } : true,
+      });
+      const track = testStream.getAudioTracks()[0];
+      btn.textContent = 'Stop test';
+      log(`mic test started: ${track.label || 'unnamed device'}`);
+      if (track.muted) log('warning: track reports muted at the OS level');
+      meterLocalAudio(track);
+      listMics();
+    } catch (err) {
+      log(`mic test failed: ${err.name} - ${err.message}`);
+      pill('dYou', 'your voice: NO ACCESS', 'bad');
+    }
+  };
+  listMics();
+  media()?.addEventListener?.('devicechange', listMics);
+
+  startBtn.onclick = async () => {
+    startBtn.disabled = true;
+    turns.clear();
+    $('transcript').innerHTML = '<span class="empty">Nothing said yet.</span>';
+    // Acquire the microphone FIRST, while still inside the click gesture.
+    // iOS Safari revokes transient user activation across awaits, so asking
+    // after the provisioning fetch below gets refused without a prompt.
+    let micTrack = null;
+    if (media()) {
+      const wantId = $('micSelect').value;
+      const audio = {
+        // Essential when the character plays through the same device's speaker:
+        // without this it hears itself and barges in on its own sentences.
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      };
+      if (wantId) audio.deviceId = { exact: wantId };
+      try {
+        const stream = await media().getUserMedia({ audio });
+        micTrack = stream.getAudioTracks()[0];
+        const st = micTrack.getSettings ? micTrack.getSettings() : {};
+        log(`microphone acquired: ${micTrack.label || 'unnamed device'}`);
+        log(`echo cancellation: ${st.echoCancellation ?? 'unreported'}`);
+      } catch (err) {
+        log(`microphone unavailable: ${err.name} - ${err.message}`);
+      }
+    } else {
+      log('microphone unavailable: not a secure context');
+    }
+
+    status('provisioning session...');
+    log('POST /api/session (create -> poll READY -> consume)');
+
+    let creds;
+    try {
+      const res = await fetch('/api/session', { method: 'POST' });
+      creds = await res.json();
+      if (!res.ok) throw new Error(creds.error || `HTTP ${res.status}`);
+    } catch (err) {
+      status('failed');
+      log(`session setup failed: ${err.message}`);
+      startBtn.disabled = false;
+      return;
+    }
+
+    sessionId = creds.sessionId;
+    maxDuration = creds.maxDuration || 300;
+    createdAtMs = creds.createdAt ? Date.parse(creds.createdAt) : null;
+    log(`session ${sessionId} ready, room ${creds.roomName}`);
+    status('connecting...');
+
+    room = new LivekitClient.Room({ adaptiveStream: true, dynacast: true });
+
+    room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
+      if (track.kind === 'video') {
+        track.attach($('video'));
+        $('placeholder').style.display = 'none';
+        log('video track attached');
+      } else if (track.kind === 'audio') {
+        track.attach($('audio'));
+        log('audio track attached');
+        pill('dChar', 'character: audio in', 'ok');
+        // Meter the inbound stream so a speaking-but-inaudible character is
+        // visibly distinct from a character that never speaks at all.
+        meterRemoteAudio(track.mediaStreamTrack);
+      }
+    });
+
+    room.on(LivekitClient.RoomEvent.AudioPlaybackStatusChanged, () => {
+      updatePlaybackPill();
+    });
+
+    // If the pipeline publishes transcripts, they prove what the character
+    // actually heard - the difference between "ignored you" and "misheard you".
+    if (LivekitClient.RoomEvent.TranscriptionReceived) {
+      room.on(LivekitClient.RoomEvent.TranscriptionReceived, (segments, participant) => {
+        const who = participant?.isLocal ? 'you' : (participant?.identity || 'character');
+        for (const seg of segments) {
+          if (seg.final) log(`transcript [${who}]: ${seg.text}`);
+        }
+      });
+    }
+
+    // Runway streams transcripts and audio-state events over the data channel.
+    // Text arrives token-by-token, so accumulate per (role, turn).
+    room.on(LivekitClient.RoomEvent.DataReceived, (payload) => {
+      let msg;
+      try {
+        msg = JSON.parse(new TextDecoder().decode(payload));
+      } catch (e) {
+        return; // not JSON - ignore
+      }
+
+      if (msg.type === 'transcription' && msg.text) {
+        appendTranscript(msg.role, msg.turn, msg.text);
+      } else if (msg.type === 'assistant_audio_state') {
+        log(`character audio ${msg.state} (turn ${msg.turn})`);
+        if (msg.state === 'started') gateMic(true);
+        else if (msg.state === 'stopped') gateMic(false);
+      }
+    });
+
+    room.on(LivekitClient.RoomEvent.ParticipantConnected, (p) => {
+      log(`participant joined: ${p.identity}`);
+    });
+
+    room.on(LivekitClient.RoomEvent.Disconnected, (reason) => {
+      if (endedAtCap()) {
+        log('disconnected: session hit its time limit - start a new call to continue');
+      } else {
+        log(`disconnected (${reason ?? 'n/a'})`);
+      }
+      teardown();
+    });
+
+    try {
+      // Credentials are one-shot; a failure here means we need a fresh Session.
+      await room.connect(creds.serverUrl, creds.token);
+      log('connected to room');
+      startCountdown(maxDuration);
+      endBtn.disabled = false;
+    } catch (err) {
+      status('connect failed');
+      log(`WebRTC connect failed: ${err.message}`);
+      if (micTrack) micTrack.stop();   // don't leave the device held
+      await hangUp();
+      return;
+    }
+
+    // Chrome blocks autoplay until a gesture is associated with the context.
+    // Without this the character talks and you hear silence.
+    try {
+      await room.startAudio();
+      log('audio playback started');
+    } catch (err) {
+      log(`audio playback blocked: ${err.message} - use "Enable audio"`);
+    }
+    updatePlaybackPill();
+
+    // A blocked or denied mic must not kill the call - fall back to listen-only
+    // so the character still comes through.
+    if (!micTrack) {
+      status('live (listen-only - no mic)');
+      pill('dMic', 'mic: BLOCKED', 'bad');
+    } else {
+      try {
+        // Publish the track we already hold, rather than asking again.
+        const track = new LivekitClient.LocalAudioTrack(micTrack, undefined, false);
+        await room.localParticipant.publishTrack(track, {
+          source: LivekitClient.Track.Source.Microphone,
+        });
+        status('live - talk to the character');
+        log(`microphone published: ${micTrack.label || 'unnamed device'}`);
+        pill('dMic', 'mic: publishing', 'ok');
+        liveMicTrack = micTrack;
+        meterLocalAudio(micTrack);
+
+        // Device names appear only after permission is granted - refresh so the
+        // picker shows real names rather than "Microphone 1".
+        listMics();
+      } catch (err) {
+        status('live (listen-only - no mic)');
+        log(`could not publish microphone: ${err.message}`);
+        pill('dMic', 'mic: BLOCKED', 'bad');
+      }
+    }
+  };
+
+  endBtn.onclick = hangUp;
+
+  // Switching mid-call re-publishes from the newly chosen device.
+  $('micSelect').onchange = async () => {
+    rememberMic();
+    if (!room) return;
+    const deviceId = $('micSelect').value;
+    try {
+      await room.switchActiveDevice('audioinput', deviceId || 'default');
+      log(`switched microphone to ${$('micSelect').selectedOptions[0]?.textContent}`);
+      const pub = room.localParticipant.getTrackPublication(
+        LivekitClient.Track.Source.Microphone
+      );
+      if (pub && pub.track) {
+        stopMyMeter();
+        meterLocalAudio(pub.track.mediaStreamTrack);
+      }
+    } catch (err) {
+      log(`could not switch microphone: ${err.message}`);
+    }
+  };
+
+  async function hangUp() {
+    endBtn.disabled = true;
+    status('ending...');
+    if (room) {
+      // Stop local tracks explicitly - a device left held makes the next
+      // session's exact-deviceId request fail.
+      try {
+        room.localParticipant.getTrackPublications().forEach((pub) => {
+          if (pub.track) pub.track.stop();
+        });
+      } catch (e) { /* nothing published */ }
+      await room.disconnect();
+      room = null;
+    }
+    // Cancel server-side too - Runway bills while the worker is active.
+    if (sessionId) {
+      await fetch(`/api/session/${sessionId}/end`, { method: 'POST' }).catch(() => {});
+      log(`session ${sessionId} ended`);
+      sessionId = null;
+    }
+    teardown();
+  }
+
+  // Keyed by role+turn so streamed tokens land in the right bubble.
+  const turns = new Map();
+
+  function appendTranscript(role, turn, text) {
+    const key = `${role}:${turn}`;
+    let entry = turns.get(key);
+
+    if (!entry) {
+      const empty = $('transcript').querySelector('.empty');
+      if (empty) empty.remove();
+
+      const el = document.createElement('div');
+      el.className = `turn ${role === 'user' ? 'user' : 'assistant'}`;
+      el.innerHTML = `<span class="who"></span><span class="said"></span>`;
+      el.querySelector('.who').textContent = role === 'user' ? 'You' : 'Cat Kadashian';
+      $('transcript').appendChild(el);
+
+      entry = { el: el.querySelector('.said'), text: '' };
+      turns.set(key, entry);
+
+      // A user turn appearing at all is proof the mic reached the pipeline.
+      if (role === 'user') pill('dYou', 'your voice: recognized', 'ok');
+    }
+
+    entry.text += text;
+    entry.el.textContent = entry.text;
+    $('transcript').scrollTop = $('transcript').scrollHeight;
+  }
+
+  // Sessions are capped server-side, so show the remaining time rather than
+  // letting the call stop mid-sentence with no explanation.
+  let countdownId = null, expiresAtMs = null, maxDuration = 300, createdAtMs = null;
+
+  // Anchored to session creation, not connect: the server-side cap starts when
+  // the session is created, so counting from connect runs a few seconds late.
+  // (The API's expiresAt is unrelated - it is the deadline to JOIN.)
+  function startCountdown(seconds) {
+    stopCountdown();
+    const span = (seconds || 300) * 1000;
+    const anchor = Number.isFinite(createdAtMs) && createdAtMs ? createdAtMs : Date.now();
+    expiresAtMs = anchor + span;
+    log(`call limit: ${Math.round((seconds || 300) / 60)} min`);
+
+    let warned60 = false, warned15 = false;
+    const tick = () => {
+      const left = Math.max(0, Math.round((expiresAtMs - Date.now()) / 1000));
+      const mins = Math.floor(left / 60), secs = left % 60;
+      pill('dTime', `time left: ${mins}:${String(secs).padStart(2, '0')}`,
+           left <= 30 ? 'bad' : left <= 60 ? 'warn' : '');
+
+      if (left <= 60 && !warned60) {
+        warned60 = true;
+        log('one minute left before the session cap');
+      }
+      if (left <= 15 && !warned15) {
+        warned15 = true;
+        log('15 seconds left - the character will stop shortly');
+      }
+      if (left === 0) {
+        status('session reached its time limit');
+        log('session cap reached - this is the server-side limit, not an error');
+        stopCountdown();
+      }
+    };
+    tick();
+    countdownId = setInterval(tick, 1000);
+  }
+
+  function stopCountdown() {
+    if (countdownId) { clearInterval(countdownId); countdownId = null; }
+  }
+
+  // True when a disconnect lands within a few seconds of the cap.
+  function endedAtCap() {
+    // Generous window - the worker's own clock may fire a little before ours.
+    return expiresAtMs !== null && Date.now() >= expiresAtMs - 15000;
+  }
+
+  // There is no server-side barge-in setting, so we hold the mic closed while
+  // the character speaks. She always completes a sentence; the cost is that you
+  // cannot interrupt her while the box is ticked.
+  let liveMicTrack = null, gateTimer = null;
+
+  function gateMic(characterSpeaking) {
+    if (!liveMicTrack) return;
+    if (!$('letHerFinish').checked) {
+      if (!liveMicTrack.enabled) liveMicTrack.enabled = true;
+      return;
+    }
+
+    if (gateTimer) { clearTimeout(gateTimer); gateTimer = null; }
+
+    if (characterSpeaking) {
+      liveMicTrack.enabled = false;
+      pill('dMic', 'mic: holding (she is speaking)', 'warn');
+      // Failsafe: if a 'stopped' event never arrives, do not stay deaf forever.
+      gateTimer = setTimeout(() => {
+        if (liveMicTrack && !liveMicTrack.enabled) {
+          liveMicTrack.enabled = true;
+          pill('dMic', 'mic: publishing', 'ok');
+          log('mic reopened by failsafe - no stop event received');
+        }
+      }, 30000);
+    } else {
+      liveMicTrack.enabled = true;
+      pill('dMic', 'mic: publishing', 'ok');
+    }
+  }
+
+  // Unticking mid-call must reopen the mic immediately.
+  $('letHerFinish').onchange = () => {
+    if (!$('letHerFinish').checked && liveMicTrack && !liveMicTrack.enabled) {
+      liveMicTrack.enabled = true;
+      pill('dMic', 'mic: publishing', 'ok');
+      log('interruption allowed - mic stays open');
+    }
+    log(`let-her-finish: ${$('letHerFinish').checked ? 'on' : 'off'}`);
+  };
+
+  function pill(id, text, cls) {
+    const el = $(id);
+    el.textContent = text;
+    el.className = 'pill' + (cls ? ' ' + cls : '');
+  }
+
+  function updatePlaybackPill() {
+    if (!room) return pill('dAudio', 'playback: -');
+    const ok = room.canPlaybackAudio;
+    pill('dAudio', ok ? 'playback: on' : 'playback: BLOCKED', ok ? 'ok' : 'warn');
+    $('enableAudio').hidden = ok;
+  }
+
+  $('enableAudio').onclick = async () => {
+    try {
+      await room.startAudio();
+      log('audio playback enabled by click');
+    } catch (err) {
+      log(`could not enable audio: ${err.message}`);
+    }
+    updatePlaybackPill();
+  };
+
+  // Web Audio meter on the character's own track. If this moves, the character
+  // is speaking - so silence means a playback problem, not an idle character.
+  let audioCtx = null, rafId = null;
+  function meterRemoteAudio(mediaStreamTrack) {
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = audioCtx.createMediaStreamSource(new MediaStream([mediaStreamTrack]));
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      src.connect(analyser);
+      const buf = new Uint8Array(analyser.frequencyBinCount);
+      let peak = 0;
+      const tick = () => {
+        analyser.getByteFrequencyData(buf);
+        const level = Math.min(100, (buf.reduce((a, b) => a + b, 0) / buf.length) * 3);
+        $('dLevel').style.width = `${level}%`;
+        if (level > 4 && peak <= 4) log('character is speaking');
+        peak = level;
+        rafId = requestAnimationFrame(tick);
+      };
+      tick();
+    } catch (err) {
+      log(`level meter unavailable: ${err.message}`);
+    }
+  }
+
+  // Same analyser, pointed at our own published track. If this bar does not move
+  // while you talk, the character cannot possibly hear you - the problem is local.
+  let myCtx = null, myRaf = null;
+  function meterLocalAudio(mediaStreamTrack) {
+    try {
+      myCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = myCtx.createMediaStreamSource(new MediaStream([mediaStreamTrack]));
+      const analyser = myCtx.createAnalyser();
+      analyser.fftSize = 512;
+      src.connect(analyser);
+      const buf = new Uint8Array(analyser.frequencyBinCount);
+      let everHeard = false;
+      const tick = () => {
+        analyser.getByteFrequencyData(buf);
+        const level = Math.min(100, (buf.reduce((a, b) => a + b, 0) / buf.length) * 3);
+        $('dMyLevel').style.width = `${level}%`;
+        if (level > 5 && !everHeard) {
+          everHeard = true;
+          pill('dYou', 'your voice: captured', 'ok');
+          log('your microphone is picking up sound');
+        }
+        myRaf = requestAnimationFrame(tick);
+      };
+      pill('dYou', 'your voice: silent so far', 'warn');
+      tick();
+    } catch (err) {
+      log(`mic meter unavailable: ${err.message}`);
+    }
+  }
+
+  function stopMyMeter() {
+    if (myRaf) { cancelAnimationFrame(myRaf); myRaf = null; }
+    if (myCtx) { myCtx.close().catch(() => {}); myCtx = null; }
+    $('dMyLevel').style.width = '0%';
+  }
+
+  function stopMeter() {
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null; }
+    $('dLevel').style.width = '0%';
+  }
+
+  function teardown() {
+    if (gateTimer) { clearTimeout(gateTimer); gateTimer = null; }
+    if (liveMicTrack) { liveMicTrack.enabled = true; liveMicTrack = null; }
+    stopMeter();
+    stopMyMeter();
+    stopCountdown();
+    pill('dTime', 'time left: -');
+    $('placeholder').style.display = 'grid';
+    $('video').srcObject = null;
+    startBtn.disabled = false;
+    endBtn.disabled = true;
+    $('enableAudio').hidden = true;
+    $('inject').disabled = false;
+    pill('dMic', 'mic: -');
+    pill('dAudio', 'playback: -');
+    pill('dChar', 'character: -');
+    pill('dYou', 'your voice: -');
+    status('idle');
+  }
+
+  // ?test=1 exposes a synthetic-speech injector. It publishes a decoded audio
+  // file as the microphone track, so the outbound leg can be verified on
+  // machines where no capture device is available.
+  if (new URLSearchParams(location.search).get('test') === '1') {
+    $('inject').hidden = false;
+  }
+
+  $('inject').onclick = async () => {
+    if (!room) { log('inject: not connected'); return; }
+    $('inject').disabled = true;
+    try {
+      const ctx = new AudioContext({ sampleRate: 48000 });
+      const bytes = await (await fetch('/static/testspeech.mp3')).arrayBuffer();
+      const buffer = await ctx.decodeAudioData(bytes);
+      log(`inject: decoded ${buffer.duration.toFixed(1)}s of speech`);
+
+      const dest = ctx.createMediaStreamDestination();
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.connect(dest);
+
+      const mst = dest.stream.getAudioTracks()[0];
+      const track = new LivekitClient.LocalAudioTrack(mst, undefined, false);
+      await room.localParticipant.publishTrack(track, {
+        source: LivekitClient.Track.Source.Microphone,
+      });
+      log('inject: published synthetic mic track');
+      pill('dMic', 'mic: synthetic', 'warn');
+      liveMicTrack = mst;   // so the let-her-finish gate applies here too
+      meterLocalAudio(mst);
+
+      src.start();
+      src.onended = () => log('inject: finished speaking - awaiting reply');
+    } catch (err) {
+      log(`inject failed: ${err.message}`);
+      $('inject').disabled = false;
+    }
+  };
+
+  // Don't leak a running session if the tab closes mid-call.
+  window.addEventListener('pagehide', () => {
+    if (sessionId) navigator.sendBeacon(`/api/session/${sessionId}/end`);
+  });
+</script>
