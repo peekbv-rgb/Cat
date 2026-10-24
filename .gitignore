@@ -11,3 +11,8 @@ runway-character-session.zip
 *.jpeg
 *.jpg
 *.png
+
+# Knowledge documents stay local. This repo is public, and the Catabatics text
+# does not belong in it while that patent is pending. No code reads these files
+# anyway - what Cat knows is attached to the avatar by hand in Runway.
+Knowledge/
